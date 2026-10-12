@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BuyIQ
 // @namespace    samara.BuyIQ
-// @version      0.1.0
+// @version      0.1.1
 // @description  Tap-by-tap below-MV shopping helper for Torn Bazaars and Item Market. TornPDA compatible.
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -26,7 +26,7 @@
  */
 (function () {
     'use strict';
-    const VERSION = '0.1.0', STORE = 'buyiq_settings_v1';
+    const VERSION = '0.1.1', STORE = 'buyiq_settings_v1';
     const DEFAULT = { enabled: true, key: '', discount: 3, reserve: 0, maxQty: 10000,
         maxSpend: 0, position: 'right', y: 42, excludeEquipment: true };
     const SELECT = {
@@ -44,6 +44,12 @@
     let selected = null, phase = 'scan', quantity = 0, route = location.href;
     let root, action, box, message, info, profile, observer, timer;
     let skipped = new WeakSet(), locked = new WeakSet(), apiRetryAt = 0;
+    let pdaState = null, pdaTapFocus = false;
+    const isPDA = () => !!(window.flutter_inappwebview || window.__tornpda || /TornPDA/i.test(navigator.userAgent || ''));
+    function tabState() {
+        const state = pdaState || window.__tornpda?.tab?.state;
+        return typeof state?.isActiveTab === 'boolean' && typeof state?.isWebViewVisible === 'boolean' ? state : null;
+    }
     const money = n => '$' + n.toLocaleString('en-US');
     const cleanNumber = v => {
         const s = String(v ?? '').trim().replace(/[$,\s]/g, '');
@@ -62,10 +68,23 @@
         if (url.pathname === '/bazaar.php' && url.searchParams.has('userId') &&
             !/^#\/(add|manage|settings)/.test(hash)) return 'bazaar';
         if ((url.pathname === '/page.php' || url.pathname === '/loader.php') &&
-            url.searchParams.get('sid') === 'ItemMarket' && !/\/add|\/manage|\/sell/.test(hash)) return 'market';
+            url.searchParams.get('sid')?.toLowerCase() === 'itemmarket' && !/\/add|\/manage|\/sell/.test(hash)) return 'market';
         return null;
     }
-    function foreground() { return !document.hidden && document.hasFocus(); }
+    function foreground() {
+        if (document.hidden) return false;
+        const state = tabState();
+        if (state) return state.isActiveTab && state.isWebViewVisible;
+        return document.hasFocus() || (isPDA() && pdaTapFocus);
+    }
+    function visibleUI() {
+        if (document.hidden) return false;
+        const state = tabState();
+        if (state) return state.isActiveTab && state.isWebViewVisible;
+        // Legacy Android WebViews may report no focus until a tap. Showing a
+        // button is harmless; scanning/purchases still require a trusted tap.
+        return isPDA() || document.hasFocus();
+    }
     function shown(el) {
         return !!(el?.isConnected && el.getClientRects().length &&
             getComputedStyle(el).visibility !== 'hidden' && !el.closest('[hidden]'));
@@ -134,7 +153,7 @@
     function say(text) { if (message && message.textContent !== text) message.textContent = text; }
     function render() {
         if (!root) return;
-        root.hidden = !settings.enabled || !pageKind() || !foreground();
+        root.hidden = !settings.enabled || !pageKind() || !visibleUI();
         root.style[settings.position === 'left' ? 'left' : 'right'] = '2px';
         root.style[settings.position === 'left' ? 'right' : 'left'] = 'auto';
         root.style.top = settings.y + '%';
@@ -249,8 +268,12 @@
         return Array.from(document.querySelectorAll('iframe[src*="recaptcha"], iframe[src*="hcaptcha"], [class*="captcha"]')).some(shown);
     }
     function trustedTap(event) {
-        if (!event.isTrusted || event.detail > 1 || busy || !settings.enabled || !foreground() || !pageKind() ||
+        if (!event.isTrusted || event.detail > 1 || busy || !settings.enabled || document.hidden || !pageKind() ||
             Date.now() < nextAllowed || hasCaptcha()) return false;
+        const state = tabState();
+        if (state && (!state.isActiveTab || !state.isWebViewVisible)) return false;
+        if (isPDA() && !state) pdaTapFocus = true;
+        if (!foreground()) return false;
         nextAllowed = Date.now() + 600;
         return true;
     }
@@ -296,9 +319,14 @@
         }
     }
     function mountProfile() {
-        if (location.pathname !== '/profiles.php' || !foreground()) return;
-        const anchor = document.querySelector('#wartargetiq-profile, ff-settings-panel, .profile-wrapper');
-        if (!anchor?.parentNode || profile?.isConnected) return;
+        if (location.pathname !== '/profiles.php' || document.hidden) return;
+        const war = document.getElementById('wartargetiq-profile');
+        const anchor = war || document.querySelector('ff-settings-panel') || document.querySelector('.profile-wrapper');
+        if (profile?.isConnected) {
+            if (war?.parentNode && war.nextElementSibling !== profile)
+                war.parentNode.insertBefore(profile, war.nextSibling);
+            return;
+        }
         profile = document.createElement('details'); profile.id = 'buyiq-profile'; profile.className = 'cont-gray border-round';
         profile.innerHTML = `<summary>BuyIQ Settings · v${VERSION}</summary><div class="bqi-form">
             <label class="bqi-check"><input name="enabled" type="checkbox">Enable BuyIQ</label>
@@ -337,7 +365,9 @@
             settings = { ...DEFAULT }; catalog = new Map(); catalogAt = 0; populate(); reset();
             profile.querySelector('[data-status]').textContent = 'Saved key and settings removed from this device.';
         });
-        populate(); anchor.parentNode.insertBefore(profile, anchor.nextSibling);
+        populate();
+        if (anchor?.parentNode) anchor.parentNode.insertBefore(profile, anchor.nextSibling);
+        else (document.querySelector('#mainContainer, #main-container, .content-wrapper') || document.body).appendChild(profile);
     }
     function boot() {
         if (document.getElementById('buyiq')) return;
@@ -370,23 +400,45 @@
         });
         root.querySelector('.bqi-tools').appendChild(finished);
         const sync = () => {
-            if (!foreground()) { root.hidden = true; return; }
+            if (document.hidden) { root.hidden = true; return; }
             if (route !== location.href) { route = location.href; box.hidden = true; reset(); }
             mountProfile(); render();
         };
         observer = new MutationObserver(records => {
-            if (!foreground() || records.every(r => root.contains(r.target) || profile?.contains(r.target))) return;
+            if (document.hidden || records.every(r => root.contains(r.target) || profile?.contains(r.target))) return;
             clearTimeout(timer); timer = setTimeout(sync, 100); // UI only; never clicks or requests.
         });
         observer.observe(document.body, { childList: true, subtree: true, characterData: true });
         addEventListener('hashchange', sync); addEventListener('popstate', sync);
         addEventListener('focus', sync);
-        addEventListener('blur', () => { root.hidden = true; if (phase !== 'result') reset('Paused. Tap BQ to rescan when back on this page.'); });
+        addEventListener('blur', () => { pdaTapFocus = false; root.hidden = true;
+            if (phase !== 'result') reset('Paused. Tap BQ to rescan when back on this page.'); });
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) { root.hidden = true; box.hidden = true;
+            if (document.hidden) { pdaTapFocus = false; root.hidden = true; box.hidden = true;
                 if (phase !== 'result') reset('Paused. Tap BQ to rescan when back on this page.'); }
             else sync();
         });
+        const applyTabState = state => {
+            if (typeof state?.isActiveTab !== 'boolean' || typeof state?.isWebViewVisible !== 'boolean') return;
+            pdaState = state;
+            if (!state.isActiveTab || !state.isWebViewVisible) {
+                pdaTapFocus = false; box.hidden = true;
+                if (phase !== 'result') reset('Paused. Tap BQ when this tab is active again.');
+            }
+            sync();
+        };
+        addEventListener('tornpda:tabState', event => applyTabState(event.detail));
+        let queryingTab = false;
+        const queryTabState = () => {
+            if (queryingTab || typeof window.flutter_inappwebview?.callHandler !== 'function') return;
+            queryingTab = true;
+            // Native app metadata only: no Torn page or purchase request.
+            Promise.resolve().then(() => window.flutter_inappwebview.callHandler('PDA_getTabState'))
+                .then(applyTabState).catch(() => {}).finally(() => { queryingTab = false; });
+        };
+        addEventListener('flutterInAppWebViewPlatformReady', queryTabState);
+        if (window.__PDA_platformReadyPromise?.then) window.__PDA_platformReadyPromise.then(queryTabState).catch(() => {});
+        queryTabState();
         reset(); sync();
     }
     if (document.body) boot(); else document.addEventListener('DOMContentLoaded', boot, { once: true });

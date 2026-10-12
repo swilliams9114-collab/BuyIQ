@@ -6,7 +6,7 @@ TornPDA-compatible manual shopping helper for player Bazaars and the Item Market
 
 Install `BuyIQ.user.js` through TornPDA's userscript URL importer, or Tampermonkey on desktop.
 
-Open your Torn **profile page**, expand **BuyIQ Settings**, enter a **Public Access API key**, and save. A green **BQ** button appears only on a player's Bazaar or the Item Market. Settings are a collapsible section on the Torn profile page, matching WarTargetIQ's placement; they are not an Android app drawer setting.
+Open your Torn **profile page**, expand **BuyIQ Settings** directly below **WarIQ Settings**, enter a **Public Access API key**, and save. A green **BQ** button appears only on a player's Bazaar or the Item Market. Settings are a collapsible section on the Torn profile page; they are not an Android app drawer setting. If WarIQ loads afterward, BuyIQ moves below it automatically.
 
 Default: prices at or below **97% of Torn MV**, no cash reserve, no cost cap, quantity cap **10,000**, right edge at **42%** from the top. Weapons/armor are excluded by default because ordinary item MV does not value individual equipment stats or bonuses. Change these settings in your profile.
 
@@ -40,7 +40,9 @@ Official Torn API v2 endpoint: `/torn/items`, using a Public Access key. Setting
 
 ## Validation and limitations
 
-First release: **0.1.0**. Syntax checking and **12 DOM fixture tests passed**. DOM tests simulate visibility and trusted event flags; they exercise the Bazaar and Item Market steps, stale price/quantity/cash guards, click gating, API errors and profile persistence. Real-browser tests are supplied but were **not run successfully** in this build environment because the Chromium download failed. Actual TornPDA layout and native purchase controls still need an in-game check. If Torn changes its markup, BuyIQ stops when it cannot identify a control instead of guessing. Other userscripts that alter purchasing can affect the native flow.
+Current release: **0.1.1**. This version uses TornPDA's native active-tab/visibility state instead of depending on Android WebView's focus report. Profile settings can mount without DOM focus, with a fallback when the expected profile wrapper is absent, and move directly below WarIQ when it loads.
+
+Syntax checking and DOM fixture tests cover purchase steps, stale price/quantity/cash guards, click gating, API errors, profile persistence and PDA visibility. DOM tests simulate visibility and trusted event flags. Real-browser tests are supplied but were **not run successfully** in this build environment because the Chromium download failed. Actual TornPDA layout and native purchase controls still need an in-game check. If Torn changes its markup, BuyIQ stops when it cannot identify a control instead of guessing. Other userscripts that alter purchasing can affect the native flow.
 
 Run `npm install`, `npm run check`, and `npm test`. Optional browser fixtures: install Chromium with `npx playwright install chromium`, then run `npm run test:browser`. Tests use mock pages and a mock API key; they never purchase in Torn.
 
