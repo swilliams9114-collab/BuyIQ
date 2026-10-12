@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BuyIQ
 // @namespace    samara.BuyIQ
-// @version      0.1.4
+// @version      0.1.5
 // @description  Tap-by-tap below-MV shopping helper for Torn Bazaars and Item Market. TornPDA compatible.
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -26,7 +26,7 @@
  */
 (function () {
     'use strict';
-    const VERSION = '0.1.4', STORE = 'buyiq_settings_v1';
+    const VERSION = '0.1.5', STORE = 'buyiq_settings_v1';
     const DEFAULT = { enabled: true, key: '', discount: 3, reserve: 0, maxQty: 10000,
         maxSpend: 0, position: 'right', y: 42, excludeEquipment: true };
     const SELECT = {
@@ -243,9 +243,21 @@
     }
     function oneControl(row, type) {
         let candidates = controls(row, type);
+        if (pageKind() === 'market' && ['open', 'buy'].includes(type) && !candidates.length) {
+            // Item Market cart controls can be divs/anchors, not text buttons.
+            // Require an explicit Buy/Purchase label or purchase-control class
+            // within this seller row. Never guess based on button order.
+            const cart = Array.from(row.querySelectorAll('button, a, [role="button"], [class*="actionButton"], [class*="buyButton"], [class*="buy___"], [class*="buy__"]'))
+                .filter(el => shown(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true' &&
+                    !/disabled|unavailable/i.test(el.className || '') && !el.closest('#buyiq, #buyiq-profile') &&
+                    !el.querySelector('input') &&
+                    (/^(?:buy|purchase)(?:\s|$)/i.test(el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent.trim()) ||
+                    /(?:^|\s)(?:buyButton|buy___|buy__)/.test(el.className || '')));
+            candidates = cart.filter(el => !cart.some(parent => parent !== el && parent.contains(el)));
+        }
         if (type === 'open' && !candidates.length) candidates = Array.from(row.querySelectorAll(
             'button[class*="activate-buy-button"], button[class*="controlPanelButton"], button[aria-label^="Buy "], button[class*="buyButton"], button[class*="buy___"]'
-        )).filter(el => shown(el) && !el.disabled);
+        )).filter(el => shown(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
         if (candidates.length !== 1) throw new Error('Purchase control could not be identified uniquely. Use Torn\'s normal button; no script click made.');
         return candidates[0];
     }

@@ -40,7 +40,9 @@ Official Torn API v2 endpoint: `/torn/items`, using a Public Access key. Setting
 
 ## Validation and limitations
 
-Current release: **0.1.4**. The Yes step verifies the native confirmation quote instead of requiring the original stock row to remain visible/unchanged. A row-local confirmation must retain the same item, unit price and quantity input; detached confirmations must identify the item, quantity and total. Changed quantities/prices, ambiguous confirmations and insufficient cash still stop submission.
+Current release: **0.1.5**. Recognizes Item Market purchase/cart controls rendered as labeled divs or anchors, including `Buy item` action controls. Selection stays within the chosen seller row; information icons, disabled carts and ambiguous purchase controls are excluded. Opening and submitting still require separate taps.
+
+The Yes step verifies the native confirmation quote instead of requiring the original stock row to remain visible/unchanged. A row-local confirmation must retain the same item, unit price and quantity input; detached confirmations must identify the item, quantity and total. Changed quantities/prices, ambiguous confirmations and insufficient cash still stop submission.
 
 Recognizes mobile Bazaar stock labels such as `(2 in stock)` and unit-price fields containing another script's percentage indicator. Stock still requires a recognized count format, and prices come only from an identified unit-price field.
 
