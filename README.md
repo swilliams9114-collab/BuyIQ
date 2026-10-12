@@ -40,7 +40,9 @@ Official Torn API v2 endpoint: `/torn/items`, using a Public Access key. Setting
 
 ## Validation and limitations
 
-Current release: **0.1.5**. Recognizes Item Market purchase/cart controls rendered as labeled divs or anchors, including `Buy item` action controls. Selection stays within the chosen seller row; information icons, disabled carts and ambiguous purchase controls are excluded. Opening and submitting still require separate taps.
+Current release: **0.1.6**. When a purchase control cannot be identified, **Copy diagnostics** captures a compact description of the selected row's visible elements, classes, roles and labels for troubleshooting. The report remains in memory and is copied locally only when tapped; it contains no API key or quantity-input values. Nothing is automatically sent to a developer. If clipboard access fails, a selectable report appears in the panel.
+
+Recognizes Item Market purchase/cart controls rendered as labeled divs or anchors, including `Buy item` action controls. Selection stays within the chosen seller row; information icons, disabled carts and ambiguous purchase controls are excluded. Opening and submitting still require separate taps.
 
 The Yes step verifies the native confirmation quote instead of requiring the original stock row to remain visible/unchanged. A row-local confirmation must retain the same item, unit price and quantity input; detached confirmations must identify the item, quantity and total. Changed quantities/prices, ambiguous confirmations and insufficient cash still stop submission.
 

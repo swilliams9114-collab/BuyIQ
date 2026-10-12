@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BuyIQ
 // @namespace    samara.BuyIQ
-// @version      0.1.5
+// @version      0.1.6
 // @description  Tap-by-tap below-MV shopping helper for Torn Bazaars and Item Market. TornPDA compatible.
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -26,7 +26,7 @@
  */
 (function () {
     'use strict';
-    const VERSION = '0.1.5', STORE = 'buyiq_settings_v1';
+    const VERSION = '0.1.6', STORE = 'buyiq_settings_v1';
     const DEFAULT = { enabled: true, key: '', discount: 3, reserve: 0, maxQty: 10000,
         maxSpend: 0, position: 'right', y: 42, excludeEquipment: true };
     const SELECT = {
@@ -45,6 +45,7 @@
     let root, action, box, message, info, profile, observer, timer;
     let skipped = new WeakSet(), locked = new WeakSet(), apiRetryAt = 0;
     let pdaState = null, pdaTapFocus = false;
+    let lastDiagnostic = '';
     const isPDA = () => !!(window.flutter_inappwebview || window.__tornpda || /TornPDA/i.test(navigator.userAgent || ''));
     function tabState() {
         const state = pdaState || window.__tornpda?.tab?.state;
@@ -178,6 +179,8 @@
         root.querySelector('[data-rescan]').disabled = busy || pending;
         const finished = root.querySelector('[data-finished]');
         if (finished) finished.hidden = !pending;
+        const diagnostic = root.querySelector('[data-diagnostic]');
+        if (diagnostic) diagnostic.hidden = !lastDiagnostic;
         action.disabled = busy;
         const label = { scan: 'BQ', ready: 'Open', fill: 'Fill', buy: 'Buy', review: 'Yes', result: 'Next' }[phase];
         if (action.textContent !== (busy ? '…' : label)) action.textContent = busy ? '…' : label;
@@ -258,7 +261,20 @@
         if (type === 'open' && !candidates.length) candidates = Array.from(row.querySelectorAll(
             'button[class*="activate-buy-button"], button[class*="controlPanelButton"], button[aria-label^="Buy "], button[class*="buyButton"], button[class*="buy___"]'
         )).filter(el => shown(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
-        if (candidates.length !== 1) throw new Error('Purchase control could not be identified uniquely. Use Torn\'s normal button; no script click made.');
+        if (candidates.length !== 1) {
+            const nodes = [row, ...Array.from(row.querySelectorAll('*')).filter(shown)].slice(0, 100);
+            lastDiagnostic = JSON.stringify({ version: VERSION, page: pageKind(), stage: type,
+                candidates: candidates.length, item: selected?.name, quantity, price: selected?.price,
+                elements: nodes.map(el => ({ node: nodes.indexOf(el), parent: nodes.indexOf(el.parentElement),
+                    tag: el.tagName.toLowerCase(), class: String(el.getAttribute('class') || '').slice(0, 200),
+                    role: el.getAttribute('role'), label: el.getAttribute('aria-label'), title: el.getAttribute('title'),
+                    test: el.getAttribute('data-testid'), disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
+                    pointer: getComputedStyle(el).pointerEvents,
+                    symbol: el.tagName.toLowerCase() === 'use' ? (el.getAttribute('href') || el.getAttribute('xlink:href') || '').slice(0, 150) : undefined,
+                    text: /^(button|a|span|label)$/i.test(el.tagName) && el.childElementCount === 0 ? el.textContent.trim().slice(0, 80) : undefined }))
+            }, null, 2);
+            throw new Error('Purchase control not identified (' + candidates.length + ' matches). Tap Copy diagnostics and send that report. No purchase sent.');
+        }
         return candidates[0];
     }
     function fill(item) {
@@ -354,6 +370,7 @@
         if (!trustedTap(event)) return;
         box.hidden = false;
         if (phase === 'scan') {
+            lastDiagnostic = ''; root.querySelector('[data-diagnostic-text]').hidden = true;
             busy = true; render(); const at = location.href;
             try { await loadCatalog(); if (at === location.href && foreground() && settings.enabled) choose(); }
             catch (e) { say(e.message); }
@@ -454,6 +471,18 @@
         document.body.appendChild(root);
         action = root.querySelector('.bqi-action'); box = root.querySelector('.bqi-box');
         message = root.querySelector('.bqi-message'); info = root.querySelector('.bqi-info');
+        const diagnostic = document.createElement('button'); diagnostic.type = 'button';
+        diagnostic.dataset.diagnostic = ''; diagnostic.textContent = 'Copy diagnostics'; diagnostic.hidden = true;
+        const diagnosticText = document.createElement('textarea'); diagnosticText.dataset.diagnosticText = '';
+        diagnosticText.readOnly = true; diagnosticText.hidden = true; diagnosticText.setAttribute('aria-label', 'BuyIQ diagnostic report');
+        diagnosticText.style.cssText = 'width:100%;box-sizing:border-box;height:120px;margin-top:8px;background:#151515;color:#eee;font-size:12px';
+        root.querySelector('.bqi-tools').appendChild(diagnostic); box.appendChild(diagnosticText);
+        diagnostic.addEventListener('click', async event => {
+            if (!event.isTrusted || !lastDiagnostic) return;
+            try { await navigator.clipboard.writeText(lastDiagnostic); say('Diagnostics copied. Paste the report into our chat.'); }
+            catch (_) { diagnosticText.value = lastDiagnostic; diagnosticText.hidden = false;
+                diagnosticText.select(); say('Select and copy the report below, then paste it into our chat.'); }
+        });
         action.addEventListener('click', advance);
         action.addEventListener('keydown', event => { if (event.repeat) event.preventDefault(); });
         root.querySelector('.bqi-close').addEventListener('click', () => { box.hidden = true; });
