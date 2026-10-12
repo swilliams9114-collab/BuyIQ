@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BuyIQ
 // @namespace    samara.BuyIQ
-// @version      0.1.6
+// @version      0.1.7
 // @description  Tap-by-tap below-MV shopping helper for Torn Bazaars and Item Market. TornPDA compatible.
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -26,7 +26,7 @@
  */
 (function () {
     'use strict';
-    const VERSION = '0.1.6', STORE = 'buyiq_settings_v1';
+    const VERSION = '0.1.7', STORE = 'buyiq_settings_v1';
     const DEFAULT = { enabled: true, key: '', discount: 3, reserve: 0, maxQty: 10000,
         maxSpend: 0, position: 'right', y: 42, excludeEquipment: true };
     const SELECT = {
@@ -246,6 +246,11 @@
     }
     function oneControl(row, type) {
         let candidates = controls(row, type);
+        if (pageKind() === 'market' && type === 'open') {
+            const openers = Array.from(row.querySelectorAll('button[aria-label="Show buy controls"], button[class*="showBuyControlsButton___"]'))
+                .filter(el => shown(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true');
+            if (openers.length) candidates = openers;
+        }
         if (pageKind() === 'market' && ['open', 'buy'].includes(type) && !candidates.length) {
             // Item Market cart controls can be divs/anchors, not text buttons.
             // Require an explicit Buy/Purchase label or purchase-control class

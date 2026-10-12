@@ -40,7 +40,9 @@ Official Torn API v2 endpoint: `/torn/items`, using a Public Access key. Setting
 
 ## Validation and limitations
 
-Current release: **0.1.6**. When a purchase control cannot be identified, **Copy diagnostics** captures a compact description of the selected row's visible elements, classes, roles and labels for troubleshooting. The report remains in memory and is copied locally only when tapped; it contains no API key or quantity-input values. Nothing is automatically sent to a developer. If clipboard access fails, a selectable report appears in the panel.
+Current release: **0.1.7**. Uses the confirmed mobile Item Market cart opener: the native button labeled **Show buy controls** (`showBuyControlsButton___` CSS class prefix). This selector is scoped to the selected seller row and used only for the Open step. The tap opens the quantity controls; filling and submitting still require later taps. Disabled or ambiguous openers are rejected.
+
+When a purchase control cannot be identified, **Copy diagnostics** captures a compact description of the selected row's visible elements, classes, roles and labels for troubleshooting. The report remains in memory and is copied locally only when tapped; it contains no API key or quantity-input values. Nothing is automatically sent to a developer. If clipboard access fails, a selectable report appears in the panel.
 
 Recognizes Item Market purchase/cart controls rendered as labeled divs or anchors, including `Buy item` action controls. Selection stays within the chosen seller row; information icons, disabled carts and ambiguous purchase controls are excluded. Opening and submitting still require separate taps.
 

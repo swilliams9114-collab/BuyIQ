@@ -1,6 +1,6 @@
 {
   "name": "buyiq",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "scripts": {"test": "node test.mjs", "test:browser": "node check.cjs", "check": "node --check BuyIQ.user.js"},
   "devDependencies": {"happy-dom": "21.0.1", "playwright": "1.62.1"}
