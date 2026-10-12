@@ -40,7 +40,9 @@ Official Torn API v2 endpoint: `/torn/items`, using a Public Access key. Setting
 
 ## Validation and limitations
 
-Current release: **0.1.2**. Fixes a startup syntax failure caused by TornPDA globally converting smart apostrophes in JavaScript source to straight apostrophes. User-facing strings now contain properly escaped straight apostrophes. All DOM fixture tests run the script through the same quote normalization and closure wrapping used by TornPDA before execution.
+Current release: **0.1.3**. Recognizes mobile Bazaar stock labels such as `(2 in stock)` and unit-price fields containing another script's percentage indicator. Stock still requires a recognized count format, and prices come only from an identified unit-price field.
+
+Includes the 0.1.2 startup fix for TornPDA globally converting smart apostrophes in JavaScript source to straight apostrophes. User-facing strings contain properly escaped straight apostrophes. All DOM fixture tests run the script through the same quote normalization and closure wrapping used by TornPDA before execution.
 
 Uses TornPDA's native active-tab/visibility state instead of depending on Android WebView's focus report. Profile settings can mount without DOM focus, with a fallback when the expected profile wrapper is absent, and move directly below WarIQ when it loads.
 

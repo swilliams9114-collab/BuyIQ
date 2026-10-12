@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BuyIQ
 // @namespace    samara.BuyIQ
-// @version      0.1.2
+// @version      0.1.3
 // @description  Tap-by-tap below-MV shopping helper for Torn Bazaars and Item Market. TornPDA compatible.
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -26,7 +26,7 @@
  */
 (function () {
     'use strict';
-    const VERSION = '0.1.2', STORE = 'buyiq_settings_v1';
+    const VERSION = '0.1.3', STORE = 'buyiq_settings_v1';
     const DEFAULT = { enabled: true, key: '', discount: 3, reserve: 0, maxQty: 10000,
         maxSpend: 0, position: 'right', y: 42, excludeEquipment: true };
     const SELECT = {
@@ -55,6 +55,15 @@
         const s = String(v ?? '').trim().replace(/[$,\s]/g, '');
         return /^\d+$/.test(s) && Number.isSafeInteger(Number(s)) ? Number(s) : null;
     };
+    function stockNumber(text) {
+        const raw = String(text ?? '').trim();
+        const plain = cleanNumber(raw);
+        if (plain !== null) return plain;
+        const count = raw.match(/^\(?\s*([\d,]+)\s*(?:in stock|available|left)\s*\)?$/i)?.[1] ||
+            raw.match(/^(?:amount|qty|quantity|stock|available)\s*:?\s*([\d,]+)$/i)?.[1] ||
+            raw.match(/^\(?\s*x\s*([\d,]+)\s*\)?$/i)?.[1];
+        return cleanNumber(count);
+    }
     function validSettings(s) {
         return typeof s.enabled === 'boolean' && typeof s.key === 'string' &&
             (!s.key || /^[a-zA-Z0-9]{16}$/.test(s.key)) &&
@@ -120,9 +129,12 @@
         const kind = pageKind(), id = itemId(row, kind), item = catalog.get(id);
         const priceEl = row.querySelector(SELECT.price), stockEl = row.querySelector(SELECT.stock);
         // Only an explicitly identified unit-price field is accepted.
-        const price = cleanNumber(priceEl?.childNodes[0]?.textContent) ?? cleanNumber(priceEl?.textContent);
-        const stockText = stockEl?.textContent?.match(/(?:^|\s|x)([\d,]+)(?:\s|$)/i)?.[1];
-        const stock = cleanNumber(stockText) ?? cleanNumber(stockEl?.textContent);
+        const price = cleanNumber(priceEl?.childNodes[0]?.textContent) ?? cleanNumber(priceEl?.textContent) ??
+            cleanNumber(priceEl?.textContent?.match(/\$([\d,]+)(?![\d,]|\.\d)/)?.[1]);
+        // Mobile Bazaar renders '(2 in stock)', sometimes with the quantity
+        // in a nested amountValue span. Neither parentheses nor discount
+        // labels in the unit-price field should discard a valid listing.
+        const stock = stockNumber(stockEl?.textContent);
         if (!item || !price || stock === null || stock < 1) return null;
         if (row.querySelector('[class*="isBlockedForBuying"]')) return null;
         if (settings.excludeEquipment && /weapon|armor|armour/i.test(item.type)) return null;
