@@ -1,0 +1,40 @@
+import { Window } from 'happy-dom';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync(new URL('./BuyIQ.user.js',import.meta.url),'utf8');
+const settings={enabled:true,key:'abcdefghijklmnop',discount:3,reserve:1000000,maxQty:10000,maxSpend:0,position:'right',y:42,excludeEquipment:true};
+let clock=Date.now(), cases=0;
+const catalog={items:[{id:180,name:'Bottle of Beer',type:'Alcohol',value:{market_price:1000}},{id:181,name:'Empty Blood Bag',type:'Medical',value:{market_price:16000}}]};
+function setup(kind='bazaar',overrides={}){
+ const w=new Window({url:kind==='bazaar'?'https://www.torn.com/bazaar.php?userId=123':'https://www.torn.com/page.php?sid=ItemMarket#/market/view=search&itemID=180'});
+ w.document.hasFocus=()=>true;Object.defineProperty(w.document,'hidden',{get:()=>false});
+ w.HTMLElement.prototype.getClientRects=function(){return this.isConnected&&!this.closest('[hidden]')?[{top:100,bottom:200,left:0,right:300}]:[]};
+ w.HTMLElement.prototype.getBoundingClientRect=function(){return {top:100,bottom:200,left:0,right:300,width:300,height:100}};
+ w.Date.now=()=>clock;
+ w.localStorage.setItem('buyiq_settings_v1',JSON.stringify({...settings,...overrides}));
+ w.document.body.innerHTML=`<div id="user-money" data-money="5000000"></div><div ${kind==='bazaar'?'data-testid="bazaar-items"':'id="item-market-root"'}><ul>
+ <li class="${kind==='bazaar'?'item___test':'rowWrapper___test'}" data-item="180"><span class="price___test">$950</span><span class="amount___test">500</span>${kind==='bazaar'?'<input class="buyAmountInput_test" value="1" max="500">':''}<button id="native-buy" class="buyButton_test">Buy</button><button id="native-yes" hidden>Accept</button></li>
+ <li class="${kind==='bazaar'?'item___test':'rowWrapper___test'}" data-item="181"><span class="price___test">$15,200</span><span class="amount___test">100</span><input class="buyAmountInput_test" value="1"><button>Buy</button></li></ul></div>`;
+ const calls={api:0,open:0,buy:0,confirm:0};
+ w.PDA_httpGet=async()=>{calls.api++;return {status:200,responseText:JSON.stringify(catalog)}};
+ w.document.querySelector('#native-buy').onclick=()=>{const row=w.document.querySelector('#native-buy').parentNode;
+  if(!row.querySelector('input')){calls.open++;row.insertAdjacentHTML('beforeend','<input class="buyAmountInput_test" value="1">');return}
+  calls.buy++;w.document.querySelector('#native-buy').hidden=true;w.document.querySelector('#native-yes').hidden=false;};
+ w.document.querySelector('#native-yes').onclick=()=>{calls.confirm++;w.document.querySelector('#native-yes').hidden=true;w.document.querySelector('#user-money').dataset.money='4525000'};
+ w.eval(source);
+ return {w,calls,q:s=>w.document.querySelector(s),async tap(s='.bqi-action',trust=true,detail=1){clock+=1000;const event=new w.MouseEvent('click',{bubbles:true,detail});Object.defineProperty(event,'isTrusted',{value:trust});w.document.querySelector(s).dispatchEvent(event);await new Promise(r=>setTimeout(r,0));},async close(){await w.happyDOM.abort();w.close()}};
+}
+async function test(name,fn){await fn();cases++;console.log('PASS '+name)}
+await test('Bazaar manual steps and next-item selection',async()=>{const t=setup();await t.tap();assert.equal(t.calls.api,1);assert.equal(t.calls.buy,0);
+ await t.tap();assert.equal(t.q('.buyAmountInput_test').value,'500');assert.equal(t.calls.buy,0);await t.tap();assert.equal(t.calls.buy,1);assert.equal(t.calls.confirm,0);
+ await t.tap();assert.equal(t.calls.confirm,1);assert.equal(t.calls.buy,1);await t.tap();assert.equal(t.calls.buy,1);await t.tap();assert.match(t.q('.bqi-info').textContent,/Empty Blood Bag/);await t.close()});
+await test('Market opening does not fill, buy or confirm in a callback',async()=>{const t=setup('market');await t.tap();await t.tap();assert.equal(t.calls.open,1);assert.equal(t.q('.buyAmountInput_test').value,'1');assert.equal(t.calls.buy,0);await t.tap();assert.equal(t.calls.buy,0);await t.tap();assert.equal(t.calls.buy,1);assert.equal(t.calls.confirm,0);await t.tap();assert.equal(t.calls.confirm,1);await t.close()});
+for(const [name,change] of [['price',t=>t.q('.price___test').textContent='$999'],['quantity',t=>t.q('.buyAmountInput_test').value='501'],['wallet',t=>t.q('#user-money').dataset.money='1000000'],['row identity',t=>t.q('[data-item="180"]').dataset.item='181']]){
+ await test(`Changed ${name} prevents buying`,async()=>{const t=setup();await t.tap();await t.tap();change(t);await t.tap();assert.equal(t.calls.buy,0);await t.close()})}
+await test('Untrusted clicks and double-click followups rejected',async()=>{const t=setup();await t.tap();await t.tap();await t.tap('.bqi-action',false);assert.equal(t.calls.buy,0);await t.tap();assert.equal(t.calls.buy,1);await t.tap('.bqi-action',true,2);assert.equal(t.calls.confirm,0);await t.close()});
+await test('Cash reserve and purchase cost cap enforced',async()=>{const t=setup('bazaar',{reserve:4999999});await t.tap();assert.equal(t.calls.buy,0);assert.match(t.q('.bqi-message').textContent,/reserve/);await t.close();const u=setup('bazaar',{maxSpend:9500});await u.tap();await u.tap();assert.equal(u.q('.buyAmountInput_test').value,'10');await u.close()});
+await test('Ambiguous native buttons fail closed',async()=>{const t=setup();await t.tap();await t.tap();t.q('#native-buy').insertAdjacentHTML('afterend','<button>Buy</button>');await t.tap();assert.equal(t.calls.buy,0);assert.match(t.q('.bqi-message').textContent,/uniquely/);await t.close()});
+await test('API errors cannot enable shopping',async()=>{const t=setup();t.w.PDA_httpGet=async()=>({status:200,responseText:'{"error":{"code":2}}'});await t.tap();assert.equal(t.calls.buy,0);assert.match(t.q('.bqi-message').textContent,/API error/);await t.close()});
+await test('Off-page, unfocused, CAPTCHA and expired MV stop actions',async()=>{for(const mode of ['page','focus','captcha','expired']){const t=setup();await t.tap();await t.tap();if(mode==='page')t.w.location.href='https://www.torn.com/index.php';if(mode==='focus')t.w.document.hasFocus=()=>false;if(mode==='captcha')t.w.document.body.insertAdjacentHTML('beforeend','<div class="captcha">Verify</div>');if(mode==='expired')clock+=16*60000;await t.tap();assert.equal(t.calls.buy,0);await t.close()}});
+await test('Profile dropdown saves settings and hides purchase button',async()=>{const t=setup();t.w.location.href='https://www.torn.com/profiles.php?XID=3979390';t.w.document.body.insertAdjacentHTML('beforeend','<div class="profile-wrapper">Profile</div>');t.w.dispatchEvent(new t.w.Event('popstate'));assert.ok(t.q('#buyiq-profile'));t.q('#buyiq-profile [name="discount"]').value='7';await t.tap('#buyiq-profile [data-save]');assert.equal(JSON.parse(t.w.localStorage.getItem('buyiq_settings_v1')).discount,7);assert.equal(t.q('#buyiq').hidden,true);await t.close()});
+console.log(`${cases} DOM fixture tests passed. Visibility geometry and trusted event flags are simulated; real-browser/in-game checks remain separate.`);
