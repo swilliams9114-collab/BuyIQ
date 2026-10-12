@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BuyIQ
 // @namespace    samara.BuyIQ
-// @version      0.1.1
+// @version      0.1.2
 // @description  Tap-by-tap below-MV shopping helper for Torn Bazaars and Item Market. TornPDA compatible.
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -26,7 +26,7 @@
  */
 (function () {
     'use strict';
-    const VERSION = '0.1.1', STORE = 'buyiq_settings_v1';
+    const VERSION = '0.1.2', STORE = 'buyiq_settings_v1';
     const DEFAULT = { enabled: true, key: '', discount: 3, reserve: 0, maxQty: 10000,
         maxSpend: 0, position: 'right', y: 42, excludeEquipment: true };
     const SELECT = {
@@ -232,7 +232,7 @@
         if (type === 'open' && !candidates.length) candidates = Array.from(row.querySelectorAll(
             'button[class*="activate-buy-button"], button[class*="controlPanelButton"], button[aria-label^="Buy "], button[class*="buyButton"], button[class*="buy___"]'
         )).filter(el => shown(el) && !el.disabled);
-        if (candidates.length !== 1) throw new Error('Purchase control could not be identified uniquely. Use Torn’s normal button; no script click made.');
+        if (candidates.length !== 1) throw new Error('Purchase control could not be identified uniquely. Use Torn\'s normal button; no script click made.');
         return candidates[0];
     }
     function fill(item) {
@@ -245,7 +245,7 @@
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, String(quantity));
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
-        phase = 'buy'; say('Quantity filled. Next tap opens Torn’s purchase review.'); render();
+        phase = 'buy'; say('Quantity filled. Next tap opens Torn\'s purchase review.'); render();
     }
     function checkQuantity(item) {
         if (quantity < 1 || quantity > purchasable(item)) throw new Error('Cash or stock changed. No purchase sent. Rescan and prepare again.');
@@ -256,12 +256,12 @@
         // Row-local confirmations are tied to the selected listing.
         const local = controls(selected.row, 'confirm');
         if (local.length === 1) return local[0];
-        if (local.length > 1) throw new Error('Ambiguous confirmation. Confirm using Torn’s normal controls.');
+        if (local.length > 1) throw new Error('Ambiguous confirmation. Confirm using Torn\'s normal controls.');
         const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [class*="confirmMenu"], [class*="confirmation"]'))
             .filter(shown).filter(el => el.textContent.includes(selected.name) &&
                 el.textContent.replaceAll(',', '').includes(String(quantity * selected.price)));
         const buttons = [...new Set(dialogs.flatMap(el => controls(el, 'confirm')))];
-        if (buttons.length !== 1) throw new Error('Torn’s confirmation is not ready or cannot be verified. Wait, or confirm with Torn’s normal button.');
+        if (buttons.length !== 1) throw new Error('Torn\'s confirmation is not ready or cannot be verified. Wait, or confirm with Torn\'s normal button.');
         return buttons[0];
     }
     function hasCaptcha() {
@@ -292,7 +292,7 @@
             if (phase === 'result') {
                 // No retry of a submitted transaction. User reviews Torn's result.
                 selected = null; quantity = 0; phase = 'scan';
-                say('Check Torn’s purchase result. Tap BQ to select another listing.'); render(); return;
+                say('Check Torn\'s purchase result. Tap BQ to select another listing.'); render(); return;
             }
             const item = current();
             if (phase === 'ready') {
@@ -304,13 +304,13 @@
             if (phase === 'fill') { fill(item); return; }
             if (phase === 'buy') {
                 checkQuantity(item); const button = oneControl(item.row, 'buy');
-                phase = 'review'; say('Review Torn’s confirmation. Tap Yes to submit this single purchase.'); render();
+                phase = 'review'; say('Review Torn\'s confirmation. Tap Yes to submit this single purchase.'); render();
                 button.click(); return; // Never auto-click the confirmation.
             }
             if (phase === 'review') {
                 checkQuantity(item); const button = confirmControl();
                 locked.add(item.row); phase = 'result';
-                say('Confirmation sent once. Check Torn’s result; tap Next when finished.'); render();
+                say('Confirmation sent once. Check Torn\'s result; tap Next when finished.'); render();
                 button.click(); return; // Never retry or open the next item in a callback.
             }
         } catch (e) {
@@ -338,7 +338,7 @@
             <small>Equipment stats and bonuses are not priced by ordinary item MV.</small>
             <label>Button edge<select name="position"><option value="right">Right</option><option value="left">Left</option></select></label>
             <label>Button height (% from top)<input name="y" type="number" min="5" max="90"></label>
-            <details><summary>API data use</summary><small>Purpose: compare loaded listing prices with Torn’s MV and prepare manual purchases. A Public Access key is sufficient. The key and settings are saved locally, unencrypted, until removed. Your key is sent only to api.torn.com. No developer server, analytics or data sharing. The catalog stays in memory for up to 15 minutes before another manual refresh; no purchase-history storage. Local key removal does not revoke your Torn key.</small>
+            <details><summary>API data use</summary><small>Purpose: compare loaded listing prices with Torn\'s MV and prepare manual purchases. A Public Access key is sufficient. The key and settings are saved locally, unencrypted, until removed. Your key is sent only to api.torn.com. No developer server, analytics or data sharing. The catalog stays in memory for up to 15 minutes before another manual refresh; no purchase-history storage. Local key removal does not revoke your Torn key.</small>
             <a href="https://www.torn.com/api.html" target="_blank" rel="noopener noreferrer">Torn API terms</a></details>
             <label>Torn Public API key<input name="key" type="password" autocomplete="off" spellcheck="false"></label>
             <button type="button" data-save>Save settings</button><button type="button" data-remove>Remove key and settings</button>
@@ -358,7 +358,7 @@
             try { localStorage.setItem(STORE, JSON.stringify(next)); }
             catch (_) { status.textContent = 'Device storage unavailable. Settings were not saved.'; return; }
             settings = next; catalog = new Map(); catalogAt = 0; reset(); refreshHighlights();
-            status.textContent = 'Saved. Open a player’s Bazaar or the Item Market and tap BQ.';
+            status.textContent = 'Saved. Open a player\'s Bazaar or the Item Market and tap BQ.';
         });
         profile.querySelector('[data-remove]').addEventListener('click', () => {
             try { localStorage.removeItem(STORE); } catch (_) { return; }
@@ -396,7 +396,7 @@
         finished.addEventListener('click', event => {
             if (!trustedTap(event) || !['review', 'result'].includes(phase)) return;
             if (selected) locked.add(selected.row);
-            reset('Check Torn’s result. Tap BQ to select another listing; the previous listing stays excluded.');
+            reset('Check Torn\'s result. Tap BQ to select another listing; the previous listing stays excluded.');
         });
         root.querySelector('.bqi-tools').appendChild(finished);
         const sync = () => {

@@ -40,7 +40,9 @@ Official Torn API v2 endpoint: `/torn/items`, using a Public Access key. Setting
 
 ## Validation and limitations
 
-Current release: **0.1.1**. This version uses TornPDA's native active-tab/visibility state instead of depending on Android WebView's focus report. Profile settings can mount without DOM focus, with a fallback when the expected profile wrapper is absent, and move directly below WarIQ when it loads.
+Current release: **0.1.2**. Fixes a startup syntax failure caused by TornPDA globally converting smart apostrophes in JavaScript source to straight apostrophes. User-facing strings now contain properly escaped straight apostrophes. All DOM fixture tests run the script through the same quote normalization and closure wrapping used by TornPDA before execution.
+
+Uses TornPDA's native active-tab/visibility state instead of depending on Android WebView's focus report. Profile settings can mount without DOM focus, with a fallback when the expected profile wrapper is absent, and move directly below WarIQ when it loads.
 
 Syntax checking and DOM fixture tests cover purchase steps, stale price/quantity/cash guards, click gating, API errors, profile persistence and PDA visibility. DOM tests simulate visibility and trusted event flags. Real-browser tests are supplied but were **not run successfully** in this build environment because the Chromium download failed. Actual TornPDA layout and native purchase controls still need an in-game check. If Torn changes its markup, BuyIQ stops when it cannot identify a control instead of guessing. Other userscripts that alter purchasing can affect the native flow.
 

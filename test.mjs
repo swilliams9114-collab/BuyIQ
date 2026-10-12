@@ -1,7 +1,13 @@
 import { Window } from 'happy-dom';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 const source=fs.readFileSync(new URL('./BuyIQ.user.js',import.meta.url),'utf8');
+// Match TornPDA adaptSource(), including its global smart-quote replacement.
+// Testing the raw file alone misses syntax failures introduced by the app.
+const adapted='(function(){const PDA_storage=undefined;'+source.replace(/[“”]/g,'"').replace(/[‘’]/g,"'")+'}());';
+new vm.Script(adapted);
+console.log('PASS TornPDA normalized injection wrapper compiles.');
 const settings={enabled:true,key:'abcdefghijklmnop',discount:3,reserve:1000000,maxQty:10000,maxSpend:0,position:'right',y:42,excludeEquipment:true};
 let clock=Date.now(), cases=0;
 const catalog={items:[{id:180,name:'Bottle of Beer',type:'Alcohol',value:{market_price:1000}},{id:181,name:'Empty Blood Bag',type:'Medical',value:{market_price:16000}}]};
@@ -21,7 +27,7 @@ function setup(kind='bazaar',overrides={},beforeBoot=()=>{}){
   if(!row.querySelector('input')){calls.open++;row.insertAdjacentHTML('beforeend','<input class="buyAmountInput_test" value="1">');return}
   calls.buy++;w.document.querySelector('#native-buy').hidden=true;w.document.querySelector('#native-yes').hidden=false;};
  w.document.querySelector('#native-yes').onclick=()=>{calls.confirm++;w.document.querySelector('#native-yes').hidden=true;w.document.querySelector('#user-money').dataset.money='4525000'};
- beforeBoot(w);w.eval(source);
+ beforeBoot(w);w.eval(adapted);
  return {w,calls,q:s=>w.document.querySelector(s),async tap(s='.bqi-action',trust=true,detail=1){clock+=1000;const event=new w.MouseEvent('click',{bubbles:true,detail});Object.defineProperty(event,'isTrusted',{value:trust});w.document.querySelector(s).dispatchEvent(event);await new Promise(r=>setTimeout(r,0));},async close(){await w.happyDOM.abort();w.close()}};
 }
 async function test(name,fn){await fn();cases++;console.log('PASS '+name)}
