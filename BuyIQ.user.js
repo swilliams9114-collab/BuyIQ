@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BuyIQ
 // @namespace    samara.BuyIQ
-// @version      0.1.3
+// @version      0.1.4
 // @description  Tap-by-tap below-MV shopping helper for Torn Bazaars and Item Market. TornPDA compatible.
 // @match        https://www.torn.com/*
 // @match        https://torn.com/*
@@ -26,7 +26,7 @@
  */
 (function () {
     'use strict';
-    const VERSION = '0.1.3', STORE = 'buyiq_settings_v1';
+    const VERSION = '0.1.4', STORE = 'buyiq_settings_v1';
     const DEFAULT = { enabled: true, key: '', discount: 3, reserve: 0, maxQty: 10000,
         maxSpend: 0, position: 'right', y: 42, excludeEquipment: true };
     const SELECT = {
@@ -233,11 +233,13 @@
     }
     function inputFor(row) { return Array.from(row.querySelectorAll(SELECT.input)).find(shown); }
     function controls(row, type) {
-        const all = Array.from(row.querySelectorAll('button, input[type="submit"], a[role="button"]')).filter(el =>
+        const all = Array.from(row.querySelectorAll(type === 'confirm' ?
+            'button, input[type="submit"], a, [role="button"], span' : 'button, input[type="submit"], a[role="button"]')).filter(el =>
             shown(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && !el.closest('#buyiq, #buyiq-profile'));
         const pattern = type === 'confirm' ? /^(?:yes|accept|confirm|confirm purchase)$/i : /^(?:buy|buy now|purchase)$/i;
-        return all.filter(el => pattern.test((el.textContent || el.value || '').trim()) ||
+        const matching = all.filter(el => pattern.test((el.textContent || el.value || '').trim()) ||
             pattern.test((el.getAttribute('aria-label') || '').trim()) || pattern.test((el.getAttribute('title') || '').trim()));
+        return matching.filter(el => !matching.some(parent => parent !== el && parent.contains(el)));
     }
     function oneControl(row, type) {
         let candidates = controls(row, type);
@@ -265,14 +267,61 @@
         if (input && cleanNumber(input.value) !== quantity) throw new Error('Quantity was changed. No purchase sent. Rescan and prepare again.');
     }
     function confirmControl() {
-        // Row-local confirmations are tied to the selected listing.
-        const local = controls(selected.row, 'confirm');
-        if (local.length === 1) return local[0];
-        if (local.length > 1) throw new Error('Ambiguous confirmation. Confirm using Torn\'s normal controls.');
-        const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [class*="confirmMenu"], [class*="confirmation"]'))
-            .filter(shown).filter(el => el.textContent.includes(selected.name) &&
-                el.textContent.replaceAll(',', '').includes(String(quantity * selected.price)));
-        const buttons = [...new Set(dialogs.flatMap(el => controls(el, 'confirm')))];
+        const total = quantity * selected.price, cash = wallet();
+        if (!Number.isSafeInteger(total) || quantity < 1 || cash === null || cash - settings.reserve < total)
+            throw new Error('Cash changed or is unavailable. No confirmation sent.');
+        const matchesQuote = (scope, rowBound = false) => {
+            const text = scope.textContent.replaceAll(',', '');
+            const amounts = [...text.matchAll(/\$(\d+)(?![\d,]|\.\d)/g)].map(m => Number(m[1]));
+            const inputs = Array.from(scope.querySelectorAll(SELECT.input));
+            if (inputs.length && (inputs.length !== 1 || cleanNumber(inputs[0].value) !== quantity)) return false;
+            const quoted = text.match(/(?:buy|purchase)\s+(\d+)\s*(?:x|×)?\s+(.+?)\s+(?:for|at)\s*\$(\d+)(?!\d|\.\d)/i);
+            if (quoted && (Number(quoted[1]) !== quantity || Number(quoted[3]) !== total ||
+                quoted[2].trim().toLowerCase() !== selected.name.toLowerCase())) return false;
+            if (rowBound) {
+                // The stock field may now be zero/hidden. It is irrelevant to
+                // a native confirmation that already quotes this transaction.
+                const priceEl = scope.querySelector(SELECT.price);
+                const price = cleanNumber(priceEl?.childNodes[0]?.textContent) ??
+                    cleanNumber(priceEl?.textContent?.match(/\$([\d,]+)/)?.[1]);
+                if (price !== null && price !== selected.price) return false;
+                if (price === selected.price && inputs.length === 1) return true;
+            }
+            const name = selected.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const quantityText = new RegExp('(?:^|[^\\d])' + quantity + '\\s*(?:x\\s*|(?:units?|items?|of)\\s+)?' + name, 'i');
+            const labeledQuantity = new RegExp('(?:quantity|qty|amount)\\s*:?\\s*' + quantity + '(?!\\d)', 'i');
+            return text.toLowerCase().includes(selected.name.toLowerCase()) && amounts.includes(total) &&
+                (quantityText.test(text) || labeledQuantity.test(text) || inputs.length === 1);
+        };
+        const scopes = [];
+        if (selected.row.isConnected) scopes.push({ el: selected.row, bound: true });
+        else {
+            const kind = pageKind();
+            const live = [...new Set(Array.from(document.querySelectorAll(kind === 'bazaar' ? SELECT.bazaarRow : SELECT.marketRow))
+                .map(el => kind === 'market' ? el.closest('li') || el : el))]
+                .filter(el => itemId(el, kind) === selected.id && controls(el, 'confirm').length);
+            // Bazaar has one row per item. Item Market may have multiple
+            // sellers: never choose among ambiguous replacement rows.
+            if (live.length === 1) scopes.push({ el: live[0], bound: true });
+        }
+        document.querySelectorAll('[role="dialog"], [class*="confirmMenu"], [class*="confirmation"], [class*="buyMenu__"]')
+            .forEach(el => { if (shown(el) && !el.closest('#buyiq')) scopes.push({ el, bound: false }); });
+        // Mobile Bazaar replaces the card with "Buy N x Item for $Total?"
+        // and native Yes/No links. Locate that quote even if its React CSS
+        // class differs. Only the small ancestor containing the exact quote
+        // is considered; never use the page or our own summary as evidence.
+        for (const control of controls(document, 'confirm')) {
+            let el = control.parentElement;
+            for (let depth = 0; el && el !== document.body && depth < 8; depth++, el = el.parentElement) {
+                if (el.querySelector('#buyiq')) break;
+                const name = selected.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const quote = new RegExp('(?:buy|purchase)\\s+' + quantity + '\\s*(?:x|×)?\\s*' + name +
+                    '\\s+(?:for|at)\\s*\\$' + total + '(?!\\d)', 'i');
+                if (quote.test(el.textContent.replaceAll(',', ''))) { scopes.push({ el, bound: false }); break; }
+            }
+        }
+        const buttons = [...new Set(scopes.filter(({ el, bound }) => matchesQuote(el, bound))
+            .flatMap(({ el }) => controls(el, 'confirm')))];
         if (buttons.length !== 1) throw new Error('Torn\'s confirmation is not ready or cannot be verified. Wait, or confirm with Torn\'s normal button.');
         return buttons[0];
     }
@@ -306,6 +355,14 @@
                 selected = null; quantity = 0; phase = 'scan';
                 say('Check Torn\'s purchase result. Tap BQ to select another listing.'); render(); return;
             }
+            if (phase === 'review') {
+                // Torn may replace/hide the original row after Buy. Verify the
+                // native quote instead of requiring the original stock row.
+                const button = confirmControl();
+                locked.add(selected.row); phase = 'result';
+                say('Confirmation sent once. Check Torn\'s result; tap Next when finished.'); render();
+                button.click(); return;
+            }
             const item = current();
             if (phase === 'ready') {
                 if (inputFor(item.row)) { fill(item); return; }
@@ -318,12 +375,6 @@
                 checkQuantity(item); const button = oneControl(item.row, 'buy');
                 phase = 'review'; say('Review Torn\'s confirmation. Tap Yes to submit this single purchase.'); render();
                 button.click(); return; // Never auto-click the confirmation.
-            }
-            if (phase === 'review') {
-                checkQuantity(item); const button = confirmControl();
-                locked.add(item.row); phase = 'result';
-                say('Confirmation sent once. Check Torn\'s result; tap Next when finished.'); render();
-                button.click(); return; // Never retry or open the next item in a callback.
             }
         } catch (e) {
             if (phase === 'review') { say(e.message); render(); }
